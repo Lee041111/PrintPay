@@ -1,0 +1,40 @@
+# =============================================================================
+# .gitignore —— 这些内容不进版本库
+# =============================================================================
+
+# ---- 编译产物 ----
+build*/
+*.obj
+*.o
+*.a
+*.exe
+*.dll
+CMakeCache.txt
+CMakeFiles/
+build.ninja
+.ninja_deps
+.ninja_log
+
+# ---- Qt Creator / 编辑器本地配置 ----
+.qtcreator/
+*.user
+CMakeLists.txt.user*
+
+# ---- 程序运行时产生的数据（含客户打印记录与文档名，属于隐私，不要上传）----
+printpay.db
+printpay.db-*
+printpay.log
+printpay.log.old
+selfcheck/
+
+# ---- 个人敏感信息：真实收款码 + 真实配置（仓库里用 config.example.ini 代替）----
+config.ini
+assets/wechat_pay.png
+assets/alipay_pay.jpg
+
+# ---- 打包好的交付物（体积大；需要发布时用 GitHub Releases 上传）----
+发布版/
+*.zip
+
+# ---- 图标中间产物（app.ico 会提交，这几个 png 可由 tools/make_icon.py 重新生成）----
+assets/icon_*.png
