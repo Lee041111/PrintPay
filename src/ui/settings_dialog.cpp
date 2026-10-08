@@ -1,17 +1,19 @@
 // =============================================================================
 // 文件名：src/ui/settings_dialog.cpp
-// 作用  ：设置窗口实现。
+// 作用  ：设置窗口实现（打印机、计费、策略、常驻方式，以及“查看历史打印总量”）。
 // =============================================================================
 #include "ui/settings_dialog.h"
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -22,10 +24,23 @@
 #include "core/spooler.h"
 
 namespace printpay {
+namespace {
 
-SettingsDialog::SettingsDialog(const AppSettings& settings, QWidget* parent)
+// 把毫秒时间戳格式化成可读时间；0 表示没有记录
+QString formatTime(qint64 ms)
+{
+    if (ms <= 0) {
+        return QStringLiteral("—");
+    }
+    return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("yyyy-MM-dd HH:mm"));
+}
+
+}  // namespace
+
+SettingsDialog::SettingsDialog(const AppSettings& settings, Store* store, QWidget* parent)
     : QDialog(parent)
     , settings_(settings)
+    , store_(store)
 {
     setWindowTitle(QStringLiteral("设置 · 打印计费助手"));
     setMinimumWidth(560);
@@ -84,10 +99,9 @@ SettingsDialog::SettingsDialog(const AppSettings& settings, QWidget* parent)
 
     chargeOthersBox_ = new QCheckBox(QStringLiteral("其他人（含未登录）打印要收费"), policyBox);
     chargeOthersBox_->setChecked(settings_.chargeOthers);
-    chargeAdminBox_ = new QCheckBox(QStringLiteral("管理员（你自己）登录后打印免费"), policyBox);
+    chargeAdminBox_ = new QCheckBox(
+        QStringLiteral("管理员登录后打印免费（不勾选则管理员也收费）"), policyBox);
     chargeAdminBox_->setChecked(!settings_.chargeAdmin);
-    // 上面用的是反向措辞（“免费”），保存时再取反，避免复选框语义绕人
-    chargeAdminBox_->setText(QStringLiteral("管理员登录后打印免费（不勾选则管理员也收费）"));
 
     approveOthersBox_ = new QCheckBox(
         QStringLiteral("其他人打印前需要我同意（会先暂停打印机队列，等你点“同意”）"), policyBox);
@@ -117,6 +131,18 @@ SettingsDialog::SettingsDialog(const AppSettings& settings, QWidget* parent)
     policyLayout->addWidget(startMinimizedBox_);
     root->addWidget(policyBox);
 
+    // ---------------- 打印量统计 ----------------
+    // 只查询、不改配置：老板想知道“从开始用到现在一共打了多少”时点这里
+    QGroupBox* statsBox = new QGroupBox(QStringLiteral("打印量统计"), this);
+    QHBoxLayout* statsLayout = new QHBoxLayout(statsBox);
+    QLabel* statsHint = new QLabel(
+        QStringLiteral("查看从开始使用到现在的累计打印量：多少单、多少份、多少页，以及累计收款。"), statsBox);
+    statsHint->setWordWrap(true);
+    QPushButton* statsButton = new QPushButton(QStringLiteral("查看历史打印总量"), statsBox);
+    statsLayout->addWidget(statsHint, 1);
+    statsLayout->addWidget(statsButton);
+    root->addWidget(statsBox);
+
     hintLabel_ = new QLabel(this);
     hintLabel_->setStyleSheet(QStringLiteral("color:#c81e1e;"));
     hintLabel_->setWordWrap(true);
@@ -131,11 +157,56 @@ SettingsDialog::SettingsDialog(const AppSettings& settings, QWidget* parent)
     buttons->addWidget(okButton);
     root->addLayout(buttons);
 
+    connect(statsButton, &QPushButton::clicked, this, &SettingsDialog::showTotalStats);
     connect(refreshButton, &QPushButton::clicked, this, &SettingsDialog::refreshPrinters);
     connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
     connect(okButton, &QPushButton::clicked, this, &SettingsDialog::onAccept);
 
     refreshPrinters();
+}
+
+void SettingsDialog::showTotalStats()
+{
+    if (store_ == nullptr || !store_->isOpen()) {
+        QMessageBox::warning(this, QStringLiteral("打印计费助手"),
+                             QStringLiteral("数据库不可用，无法统计"));
+        return;
+    }
+
+    QString error;
+    const TotalSummary total = store_->totalSummary(&error);
+    if (!error.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("打印计费助手"), error);
+        return;
+    }
+    if (total.jobs <= 0) {
+        QMessageBox::information(this, QStringLiteral("历史打印总量"),
+                                 QStringLiteral("还没有任何打印记录。\n\n"
+                                                "等程序监控到第一次打印后，这里就会显示累计数据。"));
+        return;
+    }
+
+    const int unpaid = total.amountCents - total.paidCents;
+    QMessageBox box(this);
+    box.setWindowTitle(QStringLiteral("历史打印总量"));
+    box.setIcon(QMessageBox::Information);
+    // 主标题：一眼看到“多少单、多少份、多少页”
+    box.setText(QStringLiteral("累计打印 %1 单，共 %2 份，共 %3 页")
+                    .arg(total.jobs)
+                    .arg(total.copies)
+                    .arg(total.pages));
+    // 副标题：金额与统计范围（从第一条记录到最后一条记录的时间）
+    box.setInformativeText(
+        QStringLiteral("累计应收 %1（已收 %2，未收 %3）\n"
+                       "统计范围：%4 ～ %5\n\n"
+                       "（按每页 %6 计费；如需清零重新统计，退出程序后删除 printpay.db 即可）")
+            .arg(formatCents(total.amountCents))
+            .arg(formatCents(total.paidCents))
+            .arg(formatCents(unpaid))
+            .arg(formatTime(total.firstMs))
+            .arg(formatTime(total.lastMs))
+            .arg(formatCents(settings_.pricePerPageCents)));
+    box.exec();
 }
 
 void SettingsDialog::refreshPrinters()

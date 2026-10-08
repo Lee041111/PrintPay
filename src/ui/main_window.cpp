@@ -428,7 +428,7 @@ void MainWindow::onLogoutClicked()
 
 void MainWindow::onSettingsClicked()
 {
-    SettingsDialog dialog(settings_, this);
+    SettingsDialog dialog(settings_, store_, this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -567,8 +567,9 @@ void MainWindow::refreshSummary()
         return;
     }
     summaryLabel_->setText(
-        QStringLiteral("今日：%1 单 / %2 页 · 应收 %3 · 已收 %4 · 未收 %5")
+        QStringLiteral("今日：打印 %1 单 · 共 %2 份 · 共 %3 页 ｜ 应收 %4 · 已收 %5 · 未收 %6")
             .arg(summary.jobs)
+            .arg(summary.copies)
             .arg(summary.pages)
             .arg(formatCents(summary.amountCents))
             .arg(formatCents(summary.paidCents))

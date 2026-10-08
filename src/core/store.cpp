@@ -310,7 +310,8 @@ TodaySummary Store::todaySummary(QString* error) const
     QSqlQuery query(QSqlDatabase::database(connectionName_));
     // 一次聚合出所有需要的数字，避免多次查库
     query.prepare(QStringLiteral(
-        "SELECT COUNT(*), IFNULL(SUM(pages), 0), IFNULL(SUM(amount_cents), 0), "
+        "SELECT COUNT(*), IFNULL(SUM(copies), 0), IFNULL(SUM(pages), 0), "
+        "IFNULL(SUM(amount_cents), 0), "
         "IFNULL(SUM(CASE WHEN paid = 1 THEN amount_cents ELSE 0 END), 0) "
         "FROM print_record WHERE ts >= :start"));
     query.bindValue(QStringLiteral(":start"), todayStartMs());
@@ -319,10 +320,40 @@ TodaySummary Store::todaySummary(QString* error) const
         return summary;
     }
     summary.jobs = query.value(0).toInt();
-    summary.pages = query.value(1).toInt();
-    summary.amountCents = query.value(2).toInt();
-    summary.paidCents = query.value(3).toInt();
+    summary.copies = query.value(1).toInt();
+    summary.pages = query.value(2).toInt();
+    summary.amountCents = query.value(3).toInt();
+    summary.paidCents = query.value(4).toInt();
     summary.unpaidCents = summary.amountCents - summary.paidCents;
+    return summary;
+}
+
+TotalSummary Store::totalSummary(QString* error) const
+{
+    TotalSummary summary;
+    if (!open_) {
+        setError(error, QStringLiteral("数据库尚未打开"));
+        return summary;
+    }
+    QSqlQuery query(QSqlDatabase::database(connectionName_));
+    // 一次聚合出全部累计值；MIN/MAX(ts) 顺便给出统计范围（第一条到最近一条流水）
+    query.prepare(QStringLiteral(
+        "SELECT COUNT(*), IFNULL(SUM(copies), 0), IFNULL(SUM(pages), 0), "
+        "IFNULL(SUM(amount_cents), 0), "
+        "IFNULL(SUM(CASE WHEN paid = 1 THEN amount_cents ELSE 0 END), 0), "
+        "IFNULL(MIN(ts), 0), IFNULL(MAX(ts), 0) "
+        "FROM print_record"));
+    if (!query.exec() || !query.next()) {
+        setError(error, QStringLiteral("统计历史总量失败：") + query.lastError().text());
+        return summary;
+    }
+    summary.jobs = query.value(0).toInt();
+    summary.copies = query.value(1).toInt();
+    summary.pages = query.value(2).toInt();
+    summary.amountCents = query.value(3).toInt();
+    summary.paidCents = query.value(4).toInt();
+    summary.firstMs = query.value(5).toLongLong();
+    summary.lastMs = query.value(6).toLongLong();
     return summary;
 }
 

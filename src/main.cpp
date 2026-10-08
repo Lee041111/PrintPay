@@ -22,6 +22,7 @@
 #include "ui/login_dialog.h"
 #include "ui/main_window.h"
 #include "ui/payment_dialog.h"
+#include "ui/settings_dialog.h"
 
 int main(int argc, char* argv[])
 {
@@ -33,11 +34,18 @@ int main(int argc, char* argv[])
     const QString lockPath = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
                                  .filePath(QStringLiteral("printpay_single_instance.lock"));
     QLockFile lock(lockPath);
-    lock.setStaleLockTime(0);   // 0 表示不做“陈旧锁”判断，由系统在进程结束时自动释放
-    if (!lock.tryLock(100)) {
+    // 先正常尝试加锁。如果失败，多半是“上次被强制结束（崩溃 / 任务管理器结束进程）”
+    // 留下的锁文件 —— 这时主动清理陈旧锁再试一次。
+    // 否则用户会遇到“提示程序已经在运行，但怎么都打不开”的死局（真实踩过的坑）。
+    bool lockAcquired = lock.tryLock(200);
+    if (!lockAcquired && lock.removeStaleLockFile()) {
+        lockAcquired = lock.tryLock(200);
+    }
+    if (!lockAcquired) {
         QMessageBox::warning(nullptr, QStringLiteral("打印计费助手"),
                              QStringLiteral("程序已经在运行了。\n\n"
-                                            "请到任务栏找到已打开的窗口（同时运行两个会导致同一个作业被重复计费）。"));
+                                            "请到任务栏右下角的托盘里找到它（双击图标即可打开窗口）。\n"
+                                            "同时运行两个会导致同一个打印作业被重复计费。"));
         return 1;
     }
 
@@ -116,6 +124,10 @@ int main(int argc, char* argv[])
         printpay::LoginDialog login(&store);
         login.adjustSize();
         login.grab().save(outDir + QStringLiteral("/4_login.png"));
+
+        printpay::SettingsDialog settingsDialog(settings, &store);
+        settingsDialog.adjustSize();
+        settingsDialog.grab().save(outDir + QStringLiteral("/5_settings.png"));
 
         std::printf("selfcheck 完成：%s\n", outDir.toUtf8().constData());
         return 0;

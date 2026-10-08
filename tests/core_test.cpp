@@ -161,9 +161,24 @@ void testStore()
     const TodaySummary summary = store.todaySummary(&error);
     CHECK(summary.jobs == 2);
     CHECK(summary.pages == 15);
+    CHECK(summary.copies == 3);          // 2 份 + 1 份
     CHECK(summary.amountCents == 250);
     CHECK(summary.paidCents == 200);
     CHECK(summary.unpaidCents == 50);
+
+    // 历史累计（不限时间，用于“查看历史打印总量”）
+    // 注意：error 要另起一个变量 —— Store 的错误信息只在失败时写入，
+    // 沿用上面那个变量会读到更早那次「故意失败」调用留下的旧消息
+    QString totalError;
+    const TotalSummary total = store.totalSummary(&totalError);
+    CHECK(totalError.isEmpty());
+    CHECK(total.jobs == 2);
+    CHECK(total.copies == 3);
+    CHECK(total.pages == 15);
+    CHECK(total.amountCents == 250);
+    CHECK(total.paidCents == 200);
+    CHECK(total.firstMs > 0);
+    CHECK(total.lastMs >= total.firstMs);
 
     const QVector<PrintRecord> records = store.recentRecords(10, &error);
     CHECK(records.size() == 2);

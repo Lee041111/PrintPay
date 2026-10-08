@@ -57,10 +57,10 @@ target_link_libraries(printpay_core_test PRIVATE printpay_core)
 set_target_properties(printpay_core_test PROPERTIES AUTOMOC OFF)
 
 # ---------------------------------------------------------------- 资源文件拷贝
-# 收款码图片与默认配置放到可执行文件旁边，方便直接替换
+# 收款码图片与图标放到可执行文件旁边，方便直接替换。
+# 注意：这里不拷贝 config.ini —— 它属于使用者自己的配置（且可能含个人信息，
+#       不进版本库），程序首次运行会自动生成一份默认配置。
 add_custom_command(TARGET PrintPay POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:PrintPay>/assets"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/config.ini" "$<TARGET_FILE_DIR:PrintPay>/config.ini"
 )

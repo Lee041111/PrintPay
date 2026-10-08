@@ -37,11 +37,23 @@ struct PrintRecord {
 
 // 今日汇总（显示在界面顶部）
 struct TodaySummary {
-    int jobs = 0;             // 作业数
-    int pages = 0;            // 总页数
+    int jobs = 0;             // 作业数（打印了多少单）
+    int copies = 0;           // 份数合计（共打印多少份）
+    int pages = 0;            // 页数合计（共打印多少页）
     int amountCents = 0;      // 应收总额
     int paidCents = 0;        // 已收金额
     int unpaidCents = 0;      // 未收金额
+};
+
+// 全部历史累计（“查看历史打印总量”弹窗用）
+struct TotalSummary {
+    int jobs = 0;             // 累计单数
+    int copies = 0;           // 累计份数
+    int pages = 0;            // 累计页数
+    int amountCents = 0;      // 累计应收
+    int paidCents = 0;        // 累计已收
+    qint64 firstMs = 0;       // 最早一条流水的时刻（没有记录时为 0）
+    qint64 lastMs = 0;        // 最近一条流水的时刻（没有记录时为 0）
 };
 
 class Store {
@@ -74,7 +86,10 @@ public:
     // ---- 流水 ----
     bool addRecord(const PrintRecord& record, QString* error = nullptr);
     bool markPaid(qint64 recordId, bool paid, QString* error = nullptr);
+    // 今日汇总（当天 00:00 起到现在）
     TodaySummary todaySummary(QString* error = nullptr) const;
+    // 全部历史累计（不限时间；用于“查看历史打印总量”弹窗）
+    TotalSummary totalSummary(QString* error = nullptr) const;
     QVector<PrintRecord> recentRecords(int limit, QString* error = nullptr) const;
 
 private:
